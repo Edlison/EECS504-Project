@@ -1,0 +1,332 @@
+var dataset = ee.ImageCollection('NOAA/DMSP-OLS/NIGHTTIME_LIGHTS')
+                  .filter(ee.Filter.date('2013-01-01', '2013-12-31'));
+var nighttimeLights = dataset.select('avg_vis');
+var nighttimeLightsVis = {
+  min: 3.0,
+  max: 60.0,
+};
+Map.setCenter(7.82, 49.1, 4);
+Map.addLayer(nighttimeLights, nighttimeLightsVis, 'Nighttime Lights');
+
+
+
+
+
+/****************Interannual calibration*************************************/
+
+
+function InterAnnual(imgCol,coffa,coffb){
+  var ls_imgcol = imgCol.toList(imgCol.size());
+  var result = ee.List.sequence(0,33).map(function(i){
+     i = ee.Number(i);
+     var A =ee.Image( ee.Number(coffA.get(i)));
+     var B =ee.Image( ee.Number(coffB.get(i)));
+     var img = ee.Image(ls_imgcol.get(i));
+     var img_one = ee.Image(1);
+     
+     // DNc = a*(DNm+1)^b-1
+     var img_result = A.multiply((img.add(img_one)).pow(B)).subtract(img_one);
+     img_result = img_result.multiply(img.neq(0));
+     return  img_result;     
+    });
+    
+  return ee.ImageCollection(result);
+}
+//the average of two images
+function AverageTwoImages(image1,image2){ 
+  image1 = ee.Image(image1);
+  image2 = ee.Image(image2);
+  
+  return (image1.add(image2)).multiply(ee.Image(0.5));  
+}
+
+function imgcol_annualComposite(imgCol_interAnnual){
+  
+  var ls_interAnnual = imgCol_interAnnual.toList(imgCol_interAnnual.size());
+//add images after intercalibration
+var imgCol_average = ee.List([]);
+//92 93
+imgCol_average = imgCol_average.add(ls_interAnnual.get(0)).add(ls_interAnnual.get(1));
+//94
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(2),ls_interAnnual.get(3)));
+//95 96
+imgCol_average = imgCol_average.add(ls_interAnnual.get(4)).add(ls_interAnnual.get(5));
+//97
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(6),ls_interAnnual.get(9)));
+//98
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(7),ls_interAnnual.get(10)));
+//99
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(8),ls_interAnnual.get(11)));
+//2000
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(12),ls_interAnnual.get(16)));
+//2001
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(13),ls_interAnnual.get(17)));
+//2002
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(14),ls_interAnnual.get(18)));
+//2003
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(15),ls_interAnnual.get(19)));
+//2004
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(20),ls_interAnnual.get(24)));
+//2005
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(21),ls_interAnnual.get(25)));
+//2006
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(22),ls_interAnnual.get(26)));
+//2007
+imgCol_average = imgCol_average.add(AverageTwoImages(ls_interAnnual.get(23),ls_interAnnual.get(27)));
+//08 09 10 11 12 13
+imgCol_average = imgCol_average.add(ls_interAnnual.get(28)).add(ls_interAnnual.get(29))
+                               .add(ls_interAnnual.get(30)).add(ls_interAnnual.get(31))
+                               .add(ls_interAnnual.get(32)).add(ls_interAnnual.get(33));
+                              
+ imgCol_average = ee.ImageCollection(imgCol_average);
+  
+  return imgCol_average;
+
+}
+
+
+//coefficient a
+var coffA = ee.List([0.8959,
+0.6821,
+0.9127,
+0.4225,
+0.3413,
+0.9274,
+0.3912,
+0.9734,
+0.966247621,
+1.213344145,
+0.9824,
+1.0347,
+0.9885,
+0.9282,
+0.9748,
+0.9144,
+0.8028,
+0.8678,
+0.7706,
+0.9852,
+0.864,
+0.5918,
+0.9926,
+1.1823,
+0.7638,
+0.6984,
+0.9028,
+0.8864,
+0.9971,
+1.4637,
+0.8114,
+0.9021,
+1.082513035,
+0.942624592
+]);
+//cofficient b
+var coffB =ee.List([1.031,
+1.1181,
+1.064,
+1.3025,
+1.3604,
+1.0576,
+1.3182,
+1.0312,
+1.026543342,
+1.018922783,
+1.107,
+1.0904,
+1.0702,
+1.0928,
+1.0857,
+1.1062,
+1.0855,
+1.0646,
+1.092,
+1.1141,
+1.1671,
+1.2894,
+1.1226,
+1.085,
+1.1507,
+1.2292,
+1.1306,
+1.1112,
+1.0977,
+0.9858,
+1.0849,
+1.067823603,
+1.006648579,
+1.067168939,
+]);
+// regresssion model
+var imgCol_interAnnual = InterAnnual(dataset,coffA,coffB);
+
+var imgcol_interannualCorrection = imgcol_annualComposite(imgCol_interAnnual);
+
+var imgcol_stable = imgcol_annualComposite(dataset);
+
+/*******************************Saturation**************************************/
+
+
+function LMDA(img,area){
+  
+  img = img.clip(area);  
+  var img_stable = img.select('stable');
+  var img_radcal = img.select('radCal');
+  
+  //select sample
+  var img_satMask   =   img_stable.eq(63);
+  var img_unSatMask =   img_stable.lt(63).multiply(img_stable.gt(0));
+  //differenct
+  var img_diffInUnSat = img_radcal.subtract(img_stable).mask(img_unSatMask).rename('diff');
+  //One standard deviation
+  var img_stdDev = img_diffInUnSat.reduceRegion({
+        reducer  :ee.Reducer.sampleStdDev(),
+        geometry : area,
+        maxPixels:1e9,
+        bestEffort:true
+  }).get('diff');
+  img_stdDev = ee.Image(ee.Number(img_stdDev));
+  
+  var img_avg = img_diffInUnSat.reduceRegion({
+     reducer:ee.Reducer.mean(),
+     geometry : area,
+     maxPixels:1e9,
+     bestEffort:true
+  }).get('diff');
+  img_avg = ee.Image(ee.Number(img_avg))
+  //The image elements with the difference within double standard deviation have less variation between the two years and are more stable and suitable as samples
+  var img_sampleMask = (img_diffInUnSat.lt(img_avg.add(img_stdDev)))
+               .multiply(img_diffInUnSat.gt(img_avg.subtract(img_stdDev)));
+  
+  var img_sample = (img_radcal.log()).addBands(img_stable).mask(img_sampleMask).rename('DNr','DNlm');
+    
+  var offset_scale = linearReg(img_sample,area);
+  
+  var offset_scale_replaceNull = ee.Dictionary({
+       scale : 0,
+       offset :0
+    })
+  
+  offset_scale = offset_scale_replaceNull.combine(offset_scale)
+  
+    
+  var img_a = ee.Image(ee.Number(offset_scale.get('scale')));
+  var img_b = ee.Image(ee.Number(offset_scale.get('offset')));
+  
+  var img_DNlm_InSat = img_a.multiply(img_radcal.log()).add(img_b).unmask(0);
+ 
+  var img_result = img_stable.multiply(img_satMask.neq(1)).add(img_DNlm_InSat.multiply(img_satMask));
+  
+  return img_result;
+
+}
+
+
+/********************************************Blooming****************************************************/
+//Inverse distance weight matrix 7*7
+var inverseDis_kernel = ee.Kernel.fixed(7,7,[[1/18,1/13,1/10,1/9,1/10,1/13,1/18],
+                                       [1/13,1/8,1/5,1/4,1/5,1/8,1/13],
+                                       [1/10,1/5,1/2,1,1/2,1/5,1/10],
+                                       [1/9,1/4,1,0,1,1/4,1/9],
+                                       [1/10,1/5,1/2,1,1/2,1/5,1/10],
+                                       [1/13,1/8,1/5,1/4,1/5,1/8,1/13],
+                                       [1/18,1/13,1/10,1/9,1/10,1/13,1/18]])
+
+var weight_list = ee.List([1/18,1/13,1/10,1/9,1/10,1/13,1/18,
+                          1/13,1/8,1/5,1/4,1/5,1/8,1/13,
+                          1/10,1/5,1/2,1,1/2,1/5,1/10,
+                          1/9,1/4,1,0,1,1/4,1/9,
+                          1/10,1/5,1/2,1,1/2,1/5,1/10,
+                          1/13,1/8,1/5,1/4,1/5,1/8,1/13,
+                          1/18,1/13,1/10,1/9,1/10,1/13,1/18]);
+
+var img_weigh = ee.Image([1/18,1/13,1/10,1/9,1/10,1/13,1/18,
+                          1/13,1/8,1/5,1/4,1/5,1/8,1/13,
+                          1/10,1/5,1/2,1,1/2,1/5,1/10,
+                          1/9,1/4,1,0,1,1/4,1/9,
+                          1/10,1/5,1/2,1,1/2,1/5,1/10,
+                          1/13,1/8,1/5,1/4,1/5,1/8,1/13,
+                          1/18,1/13,1/10,1/9,1/10,1/13,1/18]);
+
+//3*3 find Neighborhood pixel
+var plp_kernel = ee.Kernel.fixed(3,3,[[1,1,1],[1,0,1],[1,1,1]])
+//  300 *300 
+var neighgtCenter_kernel = ee.Kernel.square({
+  radius: 3.5,
+  normalize :false
+})
+//  300 *300 
+var linearR_kernel = ee.Kernel.square({
+  radius: 150,
+  normalize :false
+})
+var mean_kernel = ee.Kernel.square({
+  radius: 1.5,
+  normalize :false
+})
+//
+
+//select  Stable_lighs band
+var img=dataset.first();
+img = img.select("stable_lights");
+//avg filter 3*3
+img = img.reduceNeighborhood({
+  reducer: ee.Reducer.mean(),
+  kernel:  mean_kernel
+}).rename("stable_lights")
+//Map.addLayer(img);
+//select neq .0 pixel
+var img_gt0mask = img.gt(0).rename('Nonegative');
+
+// find pseudo  pixel
+var img_localmin = img.reduceNeighborhood({
+  reducer: ee.Reducer.min(),
+  kernel:  plp_kernel
+})
+
+//PLPs
+var img_PLPsmask = img_gt0mask.multiply(img_localmin.eq(0));
+
+var img_PLPs = img.mask(img_PLPsmask).rename('Rad_Y');
+
+var img_neigh7 = img.neighborhoodToBands(neighgtCenter_kernel);
+
+var img_neigh7_mask = img_neigh7.gt(img);
+
+img_neigh7 = img_neigh7.multiply(img_neigh7_mask).multiply(img_weigh);
+
+img_neigh7 = img_neigh7.reduce(ee.Reducer.sum()).rename('rad_x')
+
+//Map.addLayer(img_neigh7)
+
+var img_regression = img_neigh7.addBands(img_PLPs).select('rad_x','Rad_Y').mask(img_PLPsmask);
+
+
+var img_effab = img_regression.reduceNeighborhood({
+  reducer: ee.Reducer.linearFit(),
+  kernel:  linearR_kernel,
+  skipMasked : false
+});
+img_effab = img_effab.unmask()
+//Map.addLayer(img_effab);
+
+var jiaozheng = img_effab.select('scale').multiply(img_neigh7).add(img_effab.select('offset'))
+var img_result = img.subtract(jiaozheng.multiply(img_gt0mask));
+//Map.addLayer(img_result)
+
+var test_area= ee.Geometry.Polygon([[[103.56191119812802,1.2097344225742634], [104.09474811219052,1.2097344225742634], [104.08788165711239,1.559820812052026], [103.57564410828427,1.5557024615990354]]]);
+
+Export.image.toDrive({
+  image: img_result,
+  description : 'beijing_dmspGEE',
+  region:test_area  
+  
+})
+
+var light_intensity = img_result.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry:test_area,
+  scale: 1000  // Set the scale according to dataset
+});
+var sumValue = light_intensity.get('stable_lights');
+print("intensity of lights above the threshold:", sumValue);
